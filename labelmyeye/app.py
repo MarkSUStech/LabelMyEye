@@ -499,16 +499,6 @@ class MainWindow(QMainWindow):
 
     def open_dual(self) -> None:
         dlg = DualOpenDialog(self)
-        # prefill from sample if present
-        cwd = os.getcwd()
-        sample_after = os.path.join(cwd, "4245209_after.png")
-        sample_before = os.path.join(cwd, "4245209_before.png")
-        if os.path.isfile(sample_after):
-            dlg.after_img.setText(sample_after)
-            dlg.after_json.setText(os.path.join(cwd, "4245209_after.json"))
-        if os.path.isfile(sample_before):
-            dlg.before_img.setText(sample_before)
-            dlg.before_json.setText(os.path.join(cwd, "4245209_before.json"))
         if dlg.exec() != QDialog.Accepted:
             return
         v = dlg.values()
