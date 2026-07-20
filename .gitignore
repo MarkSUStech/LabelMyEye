@@ -1,0 +1,46 @@
+# Build / packaging
+build/
+dist/
+tools/InnoSetup/
+tools/innosetup-installer.exe
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+.cursor/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# Local exports / projects
+.lmye.json
+*_registered.json
+
+# ---------------------------------------------------------------------------
+# PHI / patient data — NEVER commit (confidential clinical material)
+# ---------------------------------------------------------------------------
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+*.tar
+*.dcm
+4245209*
+registration_meta.json
+*_before.json
+*_after.json
+*_introduction.json
+*_before.*
+*_after.*
