@@ -1,6 +1,6 @@
 ; LabelMyEye Inno Setup installer script
 #define MyAppName "LabelMyEye"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.1"
 #define MyAppPublisher "LabelMyEye"
 #define MyAppExeName "LabelMyEye.exe"
 #define MyAppURL "https://github.com/labelmyeye"

@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Create Polygon", CREATE)
         self.mode_combo.addItem("Edit", EDIT)
-        self.mode_combo.addItem("Register Before (move/scale)", MOVE_BEFORE)
+        self.mode_combo.addItem("Register Before (move/scale/rotate)", MOVE_BEFORE)
         v.addWidget(self.mode_combo)
 
         v.addWidget(QLabel("Active layer (new polygons)"))
@@ -193,6 +193,27 @@ class MainWindow(QMainWindow):
         self.opacity_slider.setValue(45)
         v.addWidget(self.opacity_slider)
 
+        rot_row = QHBoxLayout()
+        rot_row.addWidget(QLabel("Before rotation"))
+        self.rotation_label = QLabel("0.0°")
+        self.rotation_label.setMinimumWidth(48)
+        rot_row.addWidget(self.rotation_label)
+        v.addLayout(rot_row)
+        self.rotation_slider = QSlider(Qt.Horizontal)
+        self.rotation_slider.setRange(-1800, 1800)  # tenths of a degree
+        self.rotation_slider.setValue(0)
+        self.rotation_slider.setToolTip("Drag to rotate Before image (keeps view center fixed)")
+        v.addWidget(self.rotation_slider)
+        rot_btns = QHBoxLayout()
+        from PySide6.QtWidgets import QPushButton
+
+        self.btn_rot_ccw = QPushButton("↺ -1°")
+        self.btn_rot_cw = QPushButton("+1° ↻")
+        self.btn_rot_reset = QPushButton("0°")
+        for b in (self.btn_rot_ccw, self.btn_rot_reset, self.btn_rot_cw):
+            rot_btns.addWidget(b)
+        v.addLayout(rot_btns)
+
         v.addWidget(QLabel("Shapes"))
         self.shape_list = QListWidget()
         v.addWidget(self.shape_list, stretch=1)
@@ -207,6 +228,7 @@ class MainWindow(QMainWindow):
             "Right-click: edit menu<br>"
             "Wheel: zoom · Shift+Drag: pan<br>"
             "Ctrl+Wheel: scale before<br>"
+            "Ctrl+Shift+Wheel / [ ]: rotate<br>"
             "Enter: close polygon · F: fit<br>"
             "Ctrl+Z / Y: undo / redo"
         )
@@ -314,6 +336,11 @@ class MainWindow(QMainWindow):
         self.mode_combo.currentIndexChanged.connect(self._on_mode)
         self.layer_combo.currentIndexChanged.connect(self._on_layer)
         self.opacity_slider.valueChanged.connect(self._on_opacity)
+        self.rotation_slider.valueChanged.connect(self._on_rotation_slider)
+        self.btn_rot_ccw.clicked.connect(lambda: self._nudge_rotation(-1.0))
+        self.btn_rot_cw.clicked.connect(lambda: self._nudge_rotation(1.0))
+        self.btn_rot_reset.clicked.connect(lambda: self._nudge_rotation(-self.canvas.before_rotation))
+        self.canvas.before_transform_changed.connect(self._sync_rotation_ui)
         self.chk_show_after.toggled.connect(self._toggle_show_after)
         self.chk_show_before.toggled.connect(self._toggle_show_before)
         self.chk_labels_after.toggled.connect(self._toggle_labels_after)
@@ -379,6 +406,31 @@ class MainWindow(QMainWindow):
     def _on_opacity(self, v: int) -> None:
         self.canvas.before_opacity = v / 100.0
         self.canvas.update()
+
+    def _on_rotation_slider(self, v: int) -> None:
+        degrees = v / 10.0
+        if abs(degrees - self.canvas.before_rotation) < 1e-6:
+            return
+        aw, ah = self.canvas.after_size
+        pivot = (aw / 2.0, ah / 2.0) if aw else None
+        self.canvas.set_before_rotation(degrees, pivot)
+
+    def _nudge_rotation(self, delta: float) -> None:
+        if not self.canvas.dual_mode:
+            return
+        aw, ah = self.canvas.after_size
+        pivot = (aw / 2.0, ah / 2.0) if aw else None
+        self.canvas.rotate_before(delta, pivot)
+
+    def _sync_rotation_ui(self) -> None:
+        deg = self.canvas.before_rotation
+        self.rotation_label.setText(f"{deg:.1f}°")
+        slider_v = int(round(deg * 10))
+        slider_v = max(-1800, min(1800, slider_v))
+        if self.rotation_slider.value() != slider_v:
+            self.rotation_slider.blockSignals(True)
+            self.rotation_slider.setValue(slider_v)
+            self.rotation_slider.blockSignals(False)
 
     def _toggle_show_after(self, v: bool) -> None:
         self.canvas.show_after = v

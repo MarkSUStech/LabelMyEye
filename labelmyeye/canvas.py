@@ -15,6 +15,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
     QPolygonF,
+    QTransform,
     QWheelEvent,
 )
 from PySide6.QtWidgets import QMenu, QWidget
@@ -37,6 +38,7 @@ class Canvas(QWidget):
     status_message = Signal(str)
     mode_changed = Signal(str)
     request_label = Signal()
+    before_transform_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -159,31 +161,70 @@ class Canvas(QWidget):
             (p.y() - self.offset.y()) / self.scale,
         )
 
-    def before_to_after(self, x: float, y: float) -> Point:
-        rad = math.radians(self.before_rotation)
-        c, s = math.cos(rad), math.sin(rad)
-        # rotate around before image center, then scale + translate
+    def before_world_transform(self) -> QTransform:
+        """Before-image → after-image. Must match paintEvent exactly."""
         bw, bh = self.before_size
-        cx, cy = bw / 2, bh / 2
-        dx, dy = x - cx, y - cy
-        rx = c * dx - s * dy
-        ry = s * dx + c * dy
-        return (
-            rx * self.before_scale + cx * self.before_scale + self.before_tx,
-            ry * self.before_scale + cy * self.before_scale + self.before_ty,
-        )
+        cx, cy = bw / 2.0, bh / 2.0
+        t = QTransform()
+        t.translate(self.before_tx, self.before_ty)
+        t.scale(self.before_scale, self.before_scale)
+        t.translate(cx, cy)
+        t.rotate(self.before_rotation)  # Qt: degrees, Y-down (clockwise positive)
+        t.translate(-cx, -cy)
+        return t
+
+    def before_to_after(self, x: float, y: float) -> Point:
+        p = self.before_world_transform().map(QPointF(x, y))
+        return (p.x(), p.y())
 
     def after_to_before(self, x: float, y: float) -> Point:
-        bw, bh = self.before_size
-        cx, cy = bw / 2, bh / 2
-        # inverse of before_to_after
-        px = (x - self.before_tx) / self.before_scale - cx
-        py = (y - self.before_ty) / self.before_scale - cy
-        rad = math.radians(-self.before_rotation)
-        c, s = math.cos(rad), math.sin(rad)
-        dx = c * px - s * py
-        dy = s * px + c * py
-        return (dx + cx, dy + cy)
+        inv, ok = self.before_world_transform().inverted()
+        if not ok:
+            return (x, y)
+        p = inv.map(QPointF(x, y))
+        return (p.x(), p.y())
+
+    def rotate_before(self, delta_deg: float, pivot_after: Optional[Point] = None) -> None:
+        """Rotate before image; keep pivot_after fixed in after-space."""
+        if abs(delta_deg) < 1e-9:
+            return
+        if pivot_after is None:
+            aw, ah = self.after_size
+            pivot_after = (aw / 2.0, ah / 2.0)
+        # before-space point currently under the pivot
+        bx, by = self.after_to_before(*pivot_after)
+        self.before_rotation = (self.before_rotation + delta_deg) % 360.0
+        if self.before_rotation > 180.0:
+            self.before_rotation -= 360.0
+        # where that before point landed after rotation (old translation)
+        nx, ny = self.before_to_after(bx, by)
+        self.before_tx += pivot_after[0] - nx
+        self.before_ty += pivot_after[1] - ny
+        self.before_transform_changed.emit()
+        self.status_message.emit(f"Before rotation: {self.before_rotation:.1f}°")
+        self.update()
+
+    def scale_before(self, factor: float, pivot_after: Optional[Point] = None) -> None:
+        """Scale before image; keep pivot_after fixed in after-space."""
+        if factor <= 0 or abs(factor - 1.0) < 1e-9:
+            return
+        if pivot_after is None:
+            aw, ah = self.after_size
+            pivot_after = (aw / 2.0, ah / 2.0)
+        bx, by = self.after_to_before(*pivot_after)
+        new_s = max(0.05, min(20.0, self.before_scale * factor))
+        if abs(new_s - self.before_scale) < 1e-12:
+            return
+        self.before_scale = new_s
+        nx, ny = self.before_to_after(bx, by)
+        self.before_tx += pivot_after[0] - nx
+        self.before_ty += pivot_after[1] - ny
+        self.before_transform_changed.emit()
+        self.status_message.emit(f"Before scale: {self.before_scale:.3f}")
+        self.update()
+
+    def set_before_rotation(self, degrees: float, pivot_after: Optional[Point] = None) -> None:
+        self.rotate_before(degrees - self.before_rotation, pivot_after)
 
     def shape_to_after_points(self, shape: Shape) -> List[Point]:
         if shape.layer == "before":
@@ -211,6 +252,7 @@ class Canvas(QWidget):
         self.before_ty = float(t.get("ty", 0.0))
         self.before_rotation = float(t.get("rotation", 0.0))
         self.before_opacity = float(t.get("opacity", 0.45))
+        self.before_transform_changed.emit()
         self.update()
 
     # ---------- shapes API ----------
@@ -284,15 +326,10 @@ class Canvas(QWidget):
         if self.before_pixmap and self.dual_mode and self.show_before:
             p.save()
             p.setOpacity(self.before_opacity)
-            # apply transform in after space then view
+            # view transform, then the same before→after matrix used by labels
             p.translate(self.offset)
             p.scale(self.scale, self.scale)
-            p.translate(self.before_tx, self.before_ty)
-            p.scale(self.before_scale, self.before_scale)
-            bw, bh = self.before_size
-            p.translate(bw / 2, bh / 2)
-            p.rotate(self.before_rotation)
-            p.translate(-bw / 2, -bh / 2)
+            p.setTransform(self.before_world_transform(), combine=True)
             p.drawPixmap(0, 0, self.before_pixmap)
             p.restore()
 
@@ -321,7 +358,11 @@ class Canvas(QWidget):
         # registration hint
         if self.mode == MOVE_BEFORE and self.dual_mode:
             p.setPen(QColor(255, 200, 80))
-            p.drawText(12, 22, "Registration: drag to move · Ctrl+Wheel scale · Alt+Wheel rotate")
+            p.drawText(
+                12,
+                22,
+                "Registration: drag move · Ctrl+Wheel scale · Ctrl+Shift+Wheel rotate · [ ] fine rotate",
+            )
 
     def _after_target_rect(self):
         from PySide6.QtCore import QRect
@@ -524,26 +565,20 @@ class Canvas(QWidget):
             return
         mods = event.modifiers()
         pos = event.position()
+        ax, ay = self.screen_to_after(pos)
 
-        # registration transform of before image
-        if self.dual_mode and (self.mode == MOVE_BEFORE or mods & Qt.ControlModifier or mods & Qt.AltModifier):
-            if mods & Qt.AltModifier:
-                self.before_rotation += 2.0 if delta > 0 else -2.0
-                self.status_message.emit(f"Before rotation: {self.before_rotation:.1f}°")
+        # Registration transforms (Before overlay)
+        # Avoid Alt+Wheel — on Windows Alt activates the menu bar.
+        want_reg = self.dual_mode and (
+            self.mode == MOVE_BEFORE or bool(mods & Qt.ControlModifier)
+        )
+        if want_reg:
+            rotate = bool(mods & Qt.ShiftModifier)  # Ctrl+Shift+Wheel or Shift+Wheel in Register
+            if rotate:
+                self.rotate_before(2.0 if delta > 0 else -2.0, (ax, ay))
             else:
-                factor = 1.08 if delta > 0 else 1 / 1.08
-                # scale around cursor (in after coords)
-                ax, ay = self.screen_to_after(pos)
-                # point in before space under cursor stays fixed in after space
-                # after = s * before_local + t  (simplified without rotation for pivot)
-                old_s = self.before_scale
-                self.before_scale = max(0.05, min(20.0, self.before_scale * factor))
-                # keep the after-space point under cursor stable roughly
-                ratio = self.before_scale / old_s
-                self.before_tx = ax - ratio * (ax - self.before_tx)
-                self.before_ty = ay - ratio * (ay - self.before_ty)
-                self.status_message.emit(f"Before scale: {self.before_scale:.3f}")
-            self.update()
+                self.scale_before(1.08 if delta > 0 else 1 / 1.08, (ax, ay))
+            event.accept()
             return
 
         # view zoom toward cursor
@@ -555,6 +590,7 @@ class Canvas(QWidget):
         ay = (pos.y() - self.offset.y()) / old
         self.offset = QPointF(pos.x() - ax * self.scale, pos.y() - ay * self.scale)
         self.update()
+        event.accept()
 
     def mousePressEvent(self, event) -> None:
         self.setFocus()
@@ -669,16 +705,14 @@ class Canvas(QWidget):
 
         if self._moving_shape and self.selected is not None:
             self._did_drag = True
-            delta = pos - self._last_pos
-            dx = delta.x() / self.scale
-            dy = delta.y() / self.scale
+            a0 = self.screen_to_after(self._last_pos)
+            a1 = self.screen_to_after(pos)
             if self.selected.layer == "before":
-                # convert after-space delta into before-image space
-                sc = self.before_scale if self.before_scale else 1.0
-                dx, dy = dx / sc, dy / sc
-                rad = math.radians(-self.before_rotation)
-                c, sn = math.cos(rad), math.sin(rad)
-                dx, dy = c * dx - sn * dy, sn * dx + c * dy
+                b0 = self.after_to_before(*a0)
+                b1 = self.after_to_before(*a1)
+                dx, dy = b1[0] - b0[0], b1[1] - b0[1]
+            else:
+                dx, dy = a1[0] - a0[0], a1[1] - a0[1]
             self.selected.points = [(x + dx, y + dy) for x, y in self.selected.points]
             self._last_pos = pos
             self.update()
@@ -714,6 +748,7 @@ class Canvas(QWidget):
         if self._moving_before:
             self._moving_before = False
             self.unsetCursor()
+            self.before_transform_changed.emit()
             self.shapes_changed.emit()
         if self._moving_vertex or self._moving_shape:
             if self._moving_vertex and self.selected_vertex is not None:
@@ -806,6 +841,12 @@ class Canvas(QWidget):
         elif key == Qt.Key_N and mods == Qt.NoModifier:
             self.set_mode(CREATE)
             self.status_message.emit("Mode: Create")
+        elif key == Qt.Key_BracketLeft and self.dual_mode:
+            pivot = self.screen_to_after(getattr(self, "_mouse_pos", QPointF(self.width() / 2, self.height() / 2)))
+            self.rotate_before(-1.0 if not (mods & Qt.ShiftModifier) else -5.0, pivot)
+        elif key == Qt.Key_BracketRight and self.dual_mode:
+            pivot = self.screen_to_after(getattr(self, "_mouse_pos", QPointF(self.width() / 2, self.height() / 2)))
+            self.rotate_before(1.0 if not (mods & Qt.ShiftModifier) else 5.0, pivot)
         elif key == Qt.Key_F:
             self.fit_view()
         else:

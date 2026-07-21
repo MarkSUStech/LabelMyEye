@@ -3,6 +3,7 @@ build/
 dist/
 tools/InnoSetup/
 tools/innosetup-installer.exe
+LabelMyEye-Setup-*.exe
 *.spec.bak
 
 # Python
