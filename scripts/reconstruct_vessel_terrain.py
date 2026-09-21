@@ -139,26 +139,14 @@ def build_terrain(mask: np.ndarray, fov: np.ndarray, grid: int = 448,
     cx, cy = disc_proxy(m, fov_s)
     yy, xx = np.mgrid[0:m.shape[0], 0:m.shape[1]]
     r = np.hypot(xx - cx, yy - cy)
-    # 各向异性穹顶: 每个方向的半径 = 该方向上 FOV 边界离视盘的距离,
-    # 于是穹顶在所有方向的边界处都恰好降为 0, 不会出现陡壁
-    ys, xs = np.nonzero(fov_s)
-    rr = np.hypot(xs - cx, ys - cy)
-    th = np.arctan2(ys - cy, xs - cx)
-    nb = 720
-    b = ((th + np.pi) / (2.0 * np.pi) * nb).astype(int) % nb
-    rmax_bin = np.zeros(nb)
-    np.maximum.at(rmax_bin, b, rr)
-    rmax_bin = ndimage.gaussian_filter1d(rmax_bin, 10, mode="wrap")
-    rmax_bin = np.maximum(rmax_bin, 10.0)
-    th_all = np.arctan2(yy - cy, xx - cx)
-    b_all = ((th_all + np.pi) / (2.0 * np.pi) * nb).astype(int) % nb
-    R = rmax_bin[b_all]
-    dome_h = dome * np.clip(1.0 - (r / R) ** 2.2, 0.0, 1.0)
+    r_max = float(r[fov_s].max())          # FOV 内离视盘最远点
+    # 圆形穹顶延伸到 1.35*r_max(边界处仍约 0.4 高), 再由宽羽化窗在约 90px
+    # 内缓慢降到 0 —— 等高线圆润, 且不会在边界形成陡壁
+    dome_h = dome * np.clip(1.0 - (r / (1.35 * r_max)) ** 2.2, 0.0, 1.0)
     # 乘法雕刻: 谷深按当地穹顶高度的比例下切, 边界处穹顶→0, 不会挖出护城河
     h = dome_h * (1.0 - ravine * h0)
-    # 轻度边缘羽化, 避免轮廓锯齿
-    rim = ndimage.binary_erosion(fov_s, iterations=3).astype(float)
-    rim = np.clip(gaussian_filter(rim, 2.0), 0.0, 1.0)
+    rim = ndimage.binary_erosion(fov_s, iterations=40).astype(float)
+    rim = np.clip(gaussian_filter(rim, 16.0), 0.0, 1.0)
     h *= rim
     h[~fov_s] = np.nan
     h -= np.nanmin(h)

@@ -49,7 +49,7 @@
 要求：Windows / Python 3.10+
 
 ```bash
-git clone https://github.com/<你的用户名>/LabelMyEye.git
+git clone https://github.com/MarkSUStech/LabelMyEye.git
 cd LabelMyEye
 pip install -r requirements.txt
 ```

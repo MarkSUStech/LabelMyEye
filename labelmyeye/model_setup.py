@@ -19,7 +19,10 @@ FILES = ("mobile_sam_encoder.onnx", "mobile_sam_decoder.onnx")
 # 下载源按顺序尝试（%s 会被替换为文件名）。推送到 GitHub 后，建议把两个 onnx
 # 上传到仓库的 Release（tag 名 models），并把第一条改成你的仓库地址。
 MODEL_BASE_URLS = [
-    "https://github.com/LabelMyEye/LabelMyEye/releases/download/models-v1",
+    # GitHub Release（tag: models-v1）
+    "https://github.com/MarkSUStech/LabelMyEye/releases/download/models-v1",
+    # 仓库内直链（模型文件已随仓库提交）
+    "https://raw.githubusercontent.com/MarkSUStech/LabelMyEye/main/assets/models",
 ]
 
 
