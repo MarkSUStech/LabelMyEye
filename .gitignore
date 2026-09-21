@@ -1,0 +1,66 @@
+# Build / packaging
+build/
+dist/
+tools/InnoSetup/
+tools/innosetup-installer.exe
+LabelMyEye-Setup-*.exe
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+.cursor/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# Local exports / projects
+.lmye.json
+*_registered.json
+
+# ---------------------------------------------------------------------------
+# PHI / patient data — NEVER commit (confidential clinical material)
+# ---------------------------------------------------------------------------
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+*.tar
+*.dcm
+4245209*
+registration_meta.json
+*_before.json
+*_after.json
+*_introduction.json
+*_before.*
+*_after.*
+scripts/calibration_data/
+scripts/assets_mobile_sam.pt
+scripts/calibration_data/_*.png
+__pycache__/
+
+# 文档插图(合成背景, 无患者数据)
+!docs/figures/fig1_input.png
+!docs/figures/fig2_tangent.png
+!docs/figures/fig3_pp.png
+!docs/figures/fig4_construction.png
+!docs/figures/fig5_profile.png
+!docs/figures/fig6_calibration.png
+!docs/figures/fig7_gaussian.png
+!docs/figures/fig8_notches.png
+docs/figures/_*.png
+.zcode/
+docs/DR_algorithm.aux
+docs/DR_algorithm.log
+docs/DR_algorithm.out
