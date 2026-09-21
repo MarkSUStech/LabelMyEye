@@ -64,3 +64,6 @@ docs/figures/_*.png
 docs/DR_algorithm.aux
 docs/DR_algorithm.log
 docs/DR_algorithm.out
+
+# 用户本地生成的输出
+output/
