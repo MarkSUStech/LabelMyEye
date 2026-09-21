@@ -131,6 +131,10 @@ class SamSegmenter:
 
         Picks the highest-IoU non-none candidate whose area is not degenerate
         (a stray huge 'whole image' mask), upsamples bilinearly.
+
+        256 网格覆盖整个 1024×1024 信箱画布（图像位于左上、黑边填充在右下），
+        因此必须先按比例裁出图像区域再上采样——否则横版图的掩码会被竖向压扁、
+        整体上移。
         """
         ious = ious.reshape(-1)
         logits = logits[0]                                # T x 256 x 256
@@ -148,6 +152,9 @@ class SamSegmenter:
         low = logits[best_k]
         from PIL import Image
         tw, th = self._thumb_size
+        ch = max(1, int(round(th * 256 / ENCODER_SIZE)))   # 图像部分的低分辨行数
+        cw = max(1, int(round(tw * 256 / ENCODER_SIZE)))
+        low = low[:ch, :cw]
         up = Image.fromarray(low.astype(np.float32), mode="F").resize(
             (tw, th), Image.BILINEAR)
         m = np.asarray(up) > 0.0                          # th x tw bool
