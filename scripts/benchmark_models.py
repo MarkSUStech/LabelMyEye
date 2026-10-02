@@ -159,7 +159,7 @@ def main() -> None:
         name = name.strip()
         if name == "mobilesam":
             models.append(MobileSamModel())
-        elif name in ("medsam3", "medclipsamv2"):
+        elif name in ("medsam3", "medclipsamv2", "medicalsam3"):
             pd = args.pred_dir or os.path.join(args.out, name)
             models.append(PredMaskModel(name, pd))
         else:
