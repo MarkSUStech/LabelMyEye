@@ -23,7 +23,7 @@
 |------|------|----------|------|------------------|--------------------|--------------------|------|
 | E001 | MobileSAM (本仓库内置) | 框提示 = GT圆外扩1.3× | ✅ 完成 2026-10-02 | **0.799** | 0.424 | optic 0.10 / macular 0.15 | `output/benchmark/results.json` |
 | E002 | Medical-SAM3 (SAM3架构, 文本引导) — 替代被 gated 的 MedSAM3 | 文本 "optic disc" / "macula lutea" / "fovea" 等按置信度择优 | ✅ 完成 2026-10-03 | **0.279** [0.001–0.934] | **0.000** [0–0.140] | optic 0.94 / macular 3.45 | 服务器 out/ → 本地 `output/benchmark/medicalsam3/` |
-| E003 | MedSAM3 (Joey-S-Liu, SAM3+LoRA 文本引导) | 文本(330医学概念) | ⛔ 阻塞: facebook/sam3 底座 gated(manual), 需向 Meta 申请 HF 权限 | — | — | — | — |
+| E003 | MedSAM3 (Joey-S-Liu, SAM3+LoRA 文本引导) | 文本 "optic disc"/"macula lutea" 等 | ✅ 完成 2026-10-03（底座改用非 gated 转存 1038lab/sam3 的 sam3.pt 3.45GB） | **0.861** [0.751–0.960] | **0.000** [0–0] | optic 0.06 / macular 5.15 | `output/benchmark/medsam3/` |
 | E004 | MedCLIP-SAMv2 (MedIA 2025, CLIP+SAM 文本驱动) | 文本 | ⛔ 阻塞: 微调权重仅在 Google Drive(`1jjnZabUlc9...`), 服务器与本机均不可达; 需任意可翻墙设备转存 | — | — | — | — |
 
 ## E002 服务器执行详情（Titan 四卡服务器）
@@ -40,9 +40,12 @@
 ## 结果回填记录
 
 - 2026-10-02: 建档。E001 完成（n=15: optic IoU 0.799 [0.402–0.970], macular IoU 0.424 [0.297–0.633]）。
-- 2026-10-03: E002 完成（Titan GPU0, checkpoint_2D.pt, 49 图全跑）。**结论: 文本引导模型在本数据集上大幅落后于框提示 MobileSAM**——
-  optic IoU 0.279 vs 0.799（-65%）; macular 完全失效（IoU≈0, 中心距 3.45Rd, 预测区漂移到视盘上方）。
-  原因分析: Medical-SAM3 的 330 医学概念训练于 CT/MRI/超声/内镜等灰度模态, 未覆盖眼底彩照;
-  'optic disc' 等文本概念无法在彩照域 ground 到正确结构。结论支持本工具选择框提示 MobileSAM。
-  E003 解锁条件: 向 Meta 申请 facebook/sam3 的 HF 访问（gated: manual）后, 重跑 E003。
+- 2026-10-03: E002 完成（Titan GPU0, checkpoint_2D.pt, 49 图全跑）。optic IoU 0.279、macular 失效。
+- 2026-10-03: E003 完成（Titan GPU0, 底座 sam3.pt 3.45GB 转存 + LoRA 70MB）。**关键发现:**
+  ① 视盘: MedSAM3 文本引导 IoU 0.861 [0.751–0.960], **优于框提示 MobileSAM 0.799 [0.402–0.970]**——
+    不仅中位数更高, 最差情况(0.751)也好于 MobileSAM 的中位数, 稳定性显著更强;
+  ② 黄斑: MedSAM3 完全失效(IoU 0, 中心距 5.15Rd), 与 Medical-SAM3 一致——'macula lutea' 概念
+    在眼底彩照域无法 ground;
+  ③ 结论: 视盘检测上 text-guided SAM3 架构已可超过框提示方案(可作为零标注自动预标注);
+    黄斑仍必须依赖框提示或专用微调。两模型均未在眼底域训练, 微调后上限值得用本数据集探索。  E003 解锁条件: 向 Meta 申请 facebook/sam3 的 HF 访问（gated: manual）后, 重跑 E003。
   E004 解锁条件: 任意可访问 Google Drive 的设备下载 `1jjnZabUlc9_gpcP0d2nz_GNS-EGX0lq5` 转存到服务器后, 重跑 E004。
