@@ -75,10 +75,12 @@ class SamSegmenter:
         return self._embedding is not None
 
     # ------------------------------------------------------------- decoder
-    def segment(self, points, labels):
+    def segment(self, points, labels, max_frac: float = 0.6):
         """Generic prompt: points/labels lists (label: 1 pos, 0 neg), padded to
         the graph's static slot count with -1 (not-a-point). For boxes prefer
-        segment_box(). Returns (mask_bool_at_analysis_scale, info dict)."""
+        segment_box(). max_frac: 面积占比超过它的候选视为退化而跳过（小目标
+        默认 0.6；大区域任务应调高）。Returns (mask_bool_at_analysis_scale,
+        info dict)."""
         if self._embedding is None:
             raise RuntimeError("set_image() must be called before segment()")
         coords = np.asarray(points, dtype=np.float32).reshape(1, -1, 2)
@@ -93,11 +95,13 @@ class SamSegmenter:
         coords[:, :n_real] *= self._scale
         feed = self._decoder_feed(coords, lbls, 0.0)
         logits, ious = self.decoder.run(None, feed)[:2]
-        return self._select_mask(np.asarray(logits), np.asarray(ious))
+        return self._select_mask(np.asarray(logits), np.asarray(ious),
+                                 max_frac=max_frac)
 
-    def segment_box(self, box):
+    def segment_box(self, box, max_frac: float = 0.6):
         """box: (x0, y0, x1, y1) in original image px (any corner order).
 
+        max_frac: 面积占比超过它的候选视为退化而跳过（大区域任务调高）。
         Returns (mask_bool_at_analysis_scale, info dict).
         """
         if self._embedding is None:
@@ -111,7 +115,8 @@ class SamSegmenter:
             lbls = np.concatenate([lbls, [[-1.0]]], axis=1)
         feed = self._decoder_feed(coords, lbls, 0.0)
         logits, ious = self.decoder.run(None, feed)[:2]
-        return self._select_mask(np.asarray(logits), np.asarray(ious))
+        return self._select_mask(np.asarray(logits), np.asarray(ious),
+                                 max_frac=max_frac)
 
     def _decoder_feed(self, coords, lbls, has_mask: float):
         tw, th = self._thumb_size
@@ -126,11 +131,11 @@ class SamSegmenter:
         names = {i.name for i in self.decoder.get_inputs()}
         return {k: v for k, v in candidates.items() if k in names}
 
-    def _select_mask(self, logits, ious):
+    def _select_mask(self, logits, ious, max_frac: float = 0.6):
         """logits: (1, T, 256, 256); token 0 = none-token, 1..3 multimask.
 
         Picks the highest-IoU non-none candidate whose area is not degenerate
-        (a stray huge 'whole image' mask), upsamples bilinearly.
+        (a stray 'whole image' mask beyond max_frac), upsamples bilinearly.
 
         256 网格覆盖整个 1024×1024 信箱画布（图像位于左上、黑边填充在右下），
         因此必须先按比例裁出图像区域再上采样——否则横版图的掩码会被竖向压扁、
@@ -143,7 +148,7 @@ class SamSegmenter:
         best_k, best_score = None, -1.0
         for k in order:
             frac = float((logits[k] > 0.0).mean())
-            if frac > 0.6:                                # degenerate blob
+            if frac > max_frac:                           # degenerate blob
                 continue
             if float(ious[k]) > best_score:
                 best_k, best_score = k, float(ious[k])
