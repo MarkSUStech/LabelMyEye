@@ -67,3 +67,4 @@ docs/DR_algorithm.out
 
 # 用户本地生成的输出
 output/
+!experiments/figures/*.png
